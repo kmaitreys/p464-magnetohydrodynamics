@@ -25,3 +25,6 @@ Manifest.toml
 
 # No books!
 *.pdf
+
+# Fuck vscode
+*.vscode
