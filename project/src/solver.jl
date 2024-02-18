@@ -90,3 +90,48 @@ function solve_mhd_equation(n, m, Δt, Δx, ρ, μ, B0, u0, T)
     end
     return u
 end
+
+# Test the diffusion equation solver
+function test_diffusion_equation()
+    n, m = 100, 100
+    Δt, Δx = 0.01, 0.01
+    D = 0.1
+    u0(x) = exp(-x^2)
+    T = 1.0
+    u = solve_diffusion_equation(n, m, Δt, Δx, D, u0, T)
+    @assert u[1,1] ≈ u0(0)
+    @assert u[end,1] ≈ u0(1)
+    @assert u[1,end] ≈ u0(0)
+    @assert u[end,end] ≈ u0(1)
+end
+
+# Test the MHD equation solver
+function test_mhd_equation()
+    n, m = 100, 100
+    Δt, Δx = 0.01, 0.01
+    ρ, μ, B0 = 1.0, 1.0, 1.0
+    u0(x) = exp(-x^2)
+    T = 1.0
+    u = solve_mhd_equation(n, m, Δt, Δx, ρ, μ, B0, u0, T)
+    @assert u[1,1] ≈ u0(0)
+    @assert u[end,1] ≈ u0(1)
+    @assert u[1,end] ≈ u0(0)
+    @assert u[end,end] ≈ u0(1)
+end
+
+# Run the tests
+test_diffusion_equation()
+test_mhd_equation()
+
+```julia
+@benchmark solve_diffusion_equation(100, 100, 0.01, 0.01, 0.1, x -> exp(-x^2), 1.0)
+@benchmark solve_diffusion_equation!(zeros(100, 100), 0.01, 0.01, 0.1, x -> exp(-x^2), 1.0)
+@benchmark solve_mhd_equation(100, 100, 0.01, 0.01, 1.0, 1.0, 1.0, x -> exp(-x^2), 1.0)
+```
+
+```julia
+using Pkg
+Pkg.add("Plots")
+```
+
+```julia
