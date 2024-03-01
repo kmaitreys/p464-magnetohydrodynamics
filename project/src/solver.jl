@@ -1,137 +1,97 @@
-# Diffusion equation solver
-using LinearAlgebra
-using SparseArrays
-using BenchmarkTools
+# Solving the galactic dynamo using finite difference Runge-Kutta methods
+using Random
+using Plots
+## Task 1
+## 1.1
+# Solving the diffusion equation in `r` (under the no-Z) approximation
 
-function solve_diffusion_equation(n, m, Δt, Δx, D, u0, T)
-    # Create the grid
-    x = range(0, stop=Δx*(n-1), length=n)
-    t = range(0, stop=Δt*(m-1), length=m)
-    u = zeros(n, m)
-    u[:,1] .= u0.(x)
-    
-    # Create the matrix
-    A = spdiagm(-1 => -D*Δt/Δx^2 * ones(n-1),
-                0 => (1 + 2*D*Δt/Δx^2) * ones(n),
-                1 => -D*Δt/Δx^2 * ones(n-1))
-    
-    # Time-stepping loop
-    for j in 2:m
-        u[2:end,j] .= A * u[2:end,j-1]
+# Parameters
+η_t = 0.5 # Scaled turbulent magnetic diffusivity
+
+# Radial grid
+R = 10
+
+
+
+# Time
+T = 5.0
+
+dt = T / Nt
+
+# Initialize `B_r`
+R_vals = 
+B_r = @. sin(4 * π * R_vals / R)
+
+
+
+
+function gradient(arr::Vector{Float64}, dr)
+    return (arr[2:end] .- arr[1:end-1]) / dr
+end
+
+
+function get_laplacian(y::Vector{Float64}, dr)
+    return gradient(gradient(y, dr), dr)
+end
+
+function runge_kutta_fourth_order!(y::Vector{Float64}, η_t)
+    R_vals = LinRange(0, R, Nr)
+    dr = R / (Nr - 1)
+    dt = T / Nt
+    k1 = @. dt * η_t * get_laplacian(y, dr)
+    k2 = @. dt * η_t * get_laplacian(y + 0.5 * k1, dr)
+    k3 = @. dt * η_t * get_laplacian(y + 0.5 * k2, dr)
+    k4 = @. dt * η_t * get_laplacian(y + k3, dr)
+    y += (k1 + 2 * k2 + 2 * k3 + k4) / 6
+    return y
+end
+
+function evolve_magnetic_field(R, T, η)
+    evolution_record = zeros(Nr, Nt)
+    for i in 1:Nt
+        runge_kutta_fourth_order!(B_r, η)
+        evolution_record[:, i] .= B_r
     end
-    return u
 end
 
-"""
-    solve_diffusion_equation!(u, Δt, Δx, D, u0, T)
 
-Solve the diffusion equation u_t = D u_xx on the interval [0, T] with Dirichlet boundary conditions
-u(0, t) = u0(0), u(T, t) = u0(T) and initial condition u(x, 0) = u0(x).
+# Plots 
 
-# Arguments
-- `u::Array{Float64,2}`: The solution array
-- `Δt::Float64`: The time step
-- `Δx::Float64`: The spatial step
-- `D::Float64`: The diffusion coefficient
-- `u0::Function`: The initial condition
-- `T::Float64`: The final time
+# Time evolution of the magnetic field
+evolution_record = evolve_magnetic_field(
+    Nr = 200,
+    Nt = 500,
+    dr = R_max / (Nr - 1)
+)
+T = LinRange(0, T, Nt)
+plot(T, evolution_record, label="Magnetic field evolution", xlabel="Time", ylabel="Magnetic field")
 
-# Example
-```julia
-n, m = 100, 100
-Δt, Δx = 0.01, 0.01
-D = 0.1
-u0(x) = exp(-x^2)
-T = 1.0
-u = zeros(n, m)
-solve_diffusion_equation!(u, Δt, Δx, D, u0, T)
-```
 
-# References
-- https://en.wikipedia.org/wiki/Finite_difference_method
 
-# See also
-- `solve_diffusion_equation`
-"""
-function solve_diffusion_equation!(u, Δt, Δx, D, u0, T)
-    # Create the grid
-    n, m = size(u)
-    x = range(0, stop=Δx*(n-1), length=n)
-    t = range(0, stop=Δt*(m-1), length=m)
-    u[:,1] .= u0.(x)
-    
-    # Create the matrix
-    A = spdiagm(-1 => -D*Δt/Δx^2 * ones(n-1),
-                0 => (1 + 2*D*Δt/Δx^2) * ones(n),
-                1 => -D*Δt/Δx^2 * ones(n-1))
-    
-    # Time-stepping loop
-    for j in 2:m
-        u[2:end,j] .= A * u[2:end,j-1]
-    end
-    return u
-end
 
-# Magneto-hydrodynamics solver
-function LarmorRadius(mass, charge, velocity, B)
-    return mass * velocity / (charge * B)
-end
 
-function solve_mhd_equation(n, m, Δt, Δx, ρ, μ, B0, u0, T)
-    # Create the grid
-    x = range(0, stop=Δx*(n-1), length=n)
-    t = range(0, stop=Δt*(m-1), length=m)
-    u = zeros(n, m)
-    u[:,1] .= u0.(x)
-    
-    # Time-stepping loop
-    for j in 2:m
-        u[2:end,j] .= u[2:end,j-1]
-    end
-    return u
-end
 
-# Test the diffusion equation solver
-function test_diffusion_equation()
-    n, m = 100, 100
-    Δt, Δx = 0.01, 0.01
-    D = 0.1
-    u0(x) = exp(-x^2)
-    T = 1.0
-    u = solve_diffusion_equation(n, m, Δt, Δx, D, u0, T)
-    @assert u[1,1] ≈ u0(0)
-    @assert u[end,1] ≈ u0(1)
-    @assert u[1,end] ≈ u0(0)
-    @assert u[end,end] ≈ u0(1)
-end
 
-# Test the MHD equation solver
-function test_mhd_equation()
-    n, m = 100, 100
-    Δt, Δx = 0.01, 0.01
-    ρ, μ, B0 = 1.0, 1.0, 1.0
-    u0(x) = exp(-x^2)
-    T = 1.0
-    u = solve_mhd_equation(n, m, Δt, Δx, ρ, μ, B0, u0, T)
-    @assert u[1,1] ≈ u0(0)
-    @assert u[end,1] ≈ u0(1)
-    @assert u[1,end] ≈ u0(0)
-    @assert u[end,end] ≈ u0(1)
-end
 
-# Run the tests
-test_diffusion_equation()
-test_mhd_equation()
 
-```julia
-@benchmark solve_diffusion_equation(100, 100, 0.01, 0.01, 0.1, x -> exp(-x^2), 1.0)
-@benchmark solve_diffusion_equation!(zeros(100, 100), 0.01, 0.01, 0.1, x -> exp(-x^2), 1.0)
-@benchmark solve_mhd_equation(100, 100, 0.01, 0.01, 1.0, 1.0, 1.0, x -> exp(-x^2), 1.0)
-```
+# function init_magnetic_field(R)
+#     seed = rand
+# end
 
-```julia
-using Pkg
-Pkg.add("Plots")
-```
 
-```julia
+# Importing the Random module
+# using Random
+
+# # Array of strings containing 'sin' and 'cos'
+# functions = ["sin", "cos"]
+
+# # Assuming R is an array or sequence
+# R = [1, 2, 3, 4, 5]  # Example array, replace this with your actual data
+
+# # Generating random choices
+# random_choices = rand(functions, length(R))
+
+# # Printing the result
+# println(random_choices)
+
+
