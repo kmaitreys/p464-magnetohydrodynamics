@@ -55,9 +55,7 @@ evolution_record = evolve_magnetic_field(R, T, Nr, Nt, η_t)
 # Plots 
 
 # Time evolution of the magnetic field
-
 T = LinRange(0, T, Nt)
-
 function plot_every_10th_row(data::Matrix)
     num_rows = size(data, 1)
     p = plot(legend=:topleft)  # Initialize plot object
@@ -71,6 +69,13 @@ function plot_every_10th_row(data::Matrix)
 end
 
 plot_every_10th_row(evolution_record)
+
+
+function decay(t, A, τ)
+    return A * exp(-t / τ)
+end
+
+
 
 
 
