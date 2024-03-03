@@ -1,4 +1,6 @@
 # Solving the galactic dynamo using finite difference Runge-Kutta methods
+module GalacticDynamo
+
 using Random
 using Plots
 ## Task 1
@@ -75,9 +77,9 @@ function decay(t, A, τ)
     return A * exp(-t / τ)
 end
 
-
-
-
+function get_pitch_angle(B_r, B_φ)
+    return atan(B_φ, B_r)
+end
 
 
 
@@ -105,3 +107,4 @@ end
 # println(random_choices)
 
 
+end
