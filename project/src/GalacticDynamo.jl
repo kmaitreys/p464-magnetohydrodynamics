@@ -1,5 +1,5 @@
 # Solving the galactic dynamo using finite difference Runge-Kutta methods
-module GalacticDynamo
+# module GalacticDynamo
 
 using Random
 using Plots
@@ -73,13 +73,17 @@ end
 plot_every_10th_row(evolution_record)
 
 
-function decay(t, A, τ)
-    return A * exp(-t / τ)
-end
+# function decay(t, A, τ)
+#     return A * exp(-t / τ)
+# end
 
-function get_pitch_angle(B_r, B_φ)
-    return atan(B_φ, B_r)
-end
+# function get_pitch_angle(B_r, B_φ)
+#     return atan(B_φ, B_r)
+# end
+
+# @. decay(t, A, τ) = A * exp(-t / τ)
+# time_points = LinRange(0, 5, 100)
+# magnetic_field_magnitude = decay
 
 
 
@@ -107,4 +111,4 @@ end
 # println(random_choices)
 
 
-end
+# end
