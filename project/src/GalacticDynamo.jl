@@ -5,21 +5,31 @@ using Random
 using Plots
 using LaTeXStrings
 using ProgressMeter
+using Statistics
 
 Plots.default(titlefont=("computer modern"), legendfont=("computer modern"),
     guidefont=("computer modern"), tickfont=("computer modern"))
 
-function gradient(arr, dr)
+# function gradient(arr, dr)
+#     n = length(arr)
+#     grad = similar(arr)
+#     grad[1] = (arr[2] - arr[1]) / dr
+#     grad[end] = (arr[end] - arr[end-1]) / dr
+#     for i in 2:length(arr)-1
+#         grad[i] = (arr[i+1] - arr[i-1]) / (2 * dr)
+#     end
+#     return grad
+# end
+function gradient(arr, r)
     n = length(arr)
     grad = similar(arr)
-    grad[1] = (arr[2] - arr[1]) / dr
-    grad[end] = (arr[end] - arr[end-1]) / dr
-    for i in 2:length(arr)-1
-        grad[i] = (arr[i+1] - arr[i-1]) / (2 * dr)
+    grad[1] = (arr[2] - arr[1]) / (r[2] - r[1])
+    grad[end] = (arr[end] - arr[end-1]) / (r[end] - r[end-1])
+    for i in 2:n-1
+        grad[i] = (arr[i+1] - arr[i-1]) / (r[i+1] - r[i-1])
     end
     return grad
 end
-
 
 function get_laplacian(y::Vector{Float64}, dr)
     return gradient(gradient(y, dr), dr)
@@ -290,7 +300,86 @@ function evolve_pitch_angle(evolution_B_r, evolution_B_ϕ)
     end
 end
 
+function solve_mean_field(
+    fB_r::Function,
+    fB_ϕ::Function,
+    fΩ::Function,
+    fα::Function,
+    fV_r::Function,
+    fV_z::Function,
+    rmax::Float64,
+    tmax::Float64,
+    H::Float64,
+    η_m::Float64,
+    η_t::Float64,
+    step_size_r::Float64,
+    step_size_t::Float64,
+)
+    rmin = 0.0
+    tmin = 0.0
 
+    r = rmin:step_size_r:rmax
+    r = collect(r)
+    dr = diff(r)
+
+    H = H * ones(size(r))
+
+    t = tmin:step_size_t:tmax
+    t = collect(t)
+    dt = diff(t)
+
+    η = η_m + η_t
+
+    Ω = fΩ(r)
+    α = fα(r)
+    V_r = fV_r(r)
+    V_z = fV_z(r)
+
+    q_Ω = -r .* gradient(Ω, r)
+    D_c = -α[1] * q_Ω * H[3]^3 / η^2
+    # Take average of D_c
+    D_c = mean(D_c)
+
+    B_r = fB_r(r)
+    B_ϕ = fB_ϕ(r)
+
+    (
+        evolution_B_r,
+        evolution_B_ϕ,
+    ) = GalacticDynamo.evolve_magnetic_field(B_r, B_ϕ, V_r, V_z, r, H, η, α, Ω, dr, dt)
+
+    # Plot heatmaps for the time evolution of B_r and B_ϕ
+    heatmap(
+        t, r[1:end-1], evolution_B_r',
+        xlabel="Radial Position", ylabel="Time",
+        title="Time Evolution of \$B_r\$"
+    )
+
+    savefig("B_r_dynamo.png")
+
+    heatmap(
+        t, r[1:end-1], evolution_B_ϕ',
+        xlabel="Radial Position", ylabel="Time",
+        title="Time Evolution of \$B_\\phi\$"
+    )
+
+    savefig("B_ϕ_dynamo.png")
+
+    return evolution_B_r, evolution_B_ϕ
+end
+
+function evolve_magnetic_energy(evolution_B_r, evolution_B_ϕ)
+    magnetic_energy = zeros(size(evolution_B_r)[2])
+    for i in 1:size(evolution_B_r)[2]
+        B_r = evolution_B_r[:, i]
+        B_ϕ = evolution_B_ϕ[:, i]
+        magnetic_energy[i] = @. sqrt(sum(B_r^2 + B_ϕ^2))
+        println(magnetic_energy[i])
+    end
+    plot(magnetic_energy, xlabel="Time", ylabel="Magnetic Energy", title="Magnetic Energy Evolution")
+    savefig("magnetic_energy.png")
+    return magnetic_energy
+end
 
 
 end
@@ -301,4 +390,48 @@ end
 ) = GalacticDynamo.solve_diffusion()
 
 
-GalacticDynamo.evolve_pitch_angle(evolution_B_r, evolution_B_ϕ)
+# GalacticDynamo.evolve_pitch_angle(evolution_B_r, evolution_B_ϕ)
+function fB_r(r)
+    return @. -(r - 5)^2 + 25
+end
+
+function fB_ϕ(r)
+    return @. (r - 5)^2 - 25
+end
+
+function fΩ(r)
+    return @. 10 / sqrt(1 + (r / 4)^2)
+end
+
+function fα(r)
+    return ones(size(r))
+end
+
+function fV_r(r)
+    return zeros(size(r))
+end
+
+function fV_z(r)
+    return zeros(size(r))
+end
+
+(
+    evolution_B_r,
+    evolution_B_ϕ,
+) = GalacticDynamo.solve_mean_field(
+    fB_r,
+    fB_ϕ,
+    fΩ,
+    fα,
+    fV_r,
+    fV_z,
+    10.0,
+    10.0,
+    0.1,
+    0.02,
+    0.2,
+    0.01,
+    0.01,
+)
+
+magnetic_energy = GalacticDynamo.evolve_magnetic_energy(evolution_B_r, evolution_B_ϕ)

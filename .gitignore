@@ -29,5 +29,8 @@ Manifest.toml
 # Fuck vscode
 *.vscode
 
+# No tests
+*/tests/*
+
 
 
