@@ -6,6 +6,7 @@ using Plots
 using LaTeXStrings
 using ProgressMeter
 using Statistics
+using LsqFit
 
 Plots.default(titlefont=("computer modern"), legendfont=("computer modern"),
     guidefont=("computer modern"), tickfont=("computer modern"))
@@ -107,10 +108,10 @@ function magnetic_field_radial(B_r, B_ϕ, V_r, V_z, r, H, η, α, Ω, dr, dt)
         )
 
         radial_field[i] = dt * (
-            tmp_1 * B_ϕ[i-1]
-            + tmp_2 * B_ϕ[i]
-            + tmp_3 * B_ϕ[i+1]
-            + tmp_4 * B_r[i]
+            tmp_1 * B_r[i-1]
+            + tmp_2 * B_r[i]
+            + tmp_3 * B_r[i+1]
+            + tmp_4 * B_ϕ[i]
         )
     end
     return radial_field
@@ -202,16 +203,28 @@ function evolve_magnetic_field(B_r, B_ϕ, V_r, V_z, r, H, η, α, Ω, dr, dt)
     Nt = length(dt)
     evolution_B_r = zeros(Nr, Nt)
     evolution_B_ϕ = zeros(Nr, Nt)
+
+    decay_at_r = 5.0
+    decay_B_r = zeros(Nt)
+    decay_B_ϕ = zeros(Nt)
+
+    # Index where B_r is equal to decay_at_r
+    decay_index = findall(x -> x == decay_at_r, r)[1]
+
     @showprogress for i in eachindex(dt)
         (
             B_r, B_ϕ
         ) = runge_kutta_fourth_order_coupled(B_r, B_ϕ, V_r, V_z, r, H, η, α, Ω, dr, dt[i])
         evolution_B_r[:, i] .= B_r
         evolution_B_ϕ[:, i] .= B_ϕ
+        decay_B_r[i] = B_r[decay_index]
+        decay_B_ϕ[i] = B_ϕ[decay_index]
     end
     return (
         evolution_B_r,
-        evolution_B_ϕ
+        evolution_B_ϕ,
+        decay_B_r,
+        decay_B_ϕ,
     )
 end
 
@@ -262,6 +275,8 @@ function solve_diffusion()
     (
         evolution_B_r,
         evolution_B_ϕ,
+        decay_B_r,
+        decay_B_ϕ,
     ) = GalacticDynamo.evolve_magnetic_field(B_r, B_ϕ, V_r, V_z, r, H, η, α, Ω, dr, dt)
 
     # Plot heatmaps for the time evolution of B_r and B_ϕ
@@ -280,24 +295,54 @@ function solve_diffusion()
     )
     savefig("B_ϕ.png")
 
-    return evolution_B_r, evolution_B_ϕ
+    # Plot the decay of B_r and B_ϕ at a specific radial position
+    plot(t[1:end-1], decay_B_r, label="\$B_r\$", title="Decay of B_r at r = 5")
+    savefig("decay_B_r.png")
+
+    plot(t[1:end-1], decay_B_ϕ, label="\$B_\\phi\$", title="Decay of B_ϕ at r = 5")
+    savefig("decay_B_ϕ.png")
+
+    # Plot the pitch angle evolution
+    GalacticDynamo.evolve_pitch_angle(r, evolution_B_r, evolution_B_ϕ)
+
+    # Find the decay law for B_r and B_ϕ
+    decay_B_r_log = log.(abs.(decay_B_r))
+    decay_B_ϕ_log = log.(abs.(decay_B_ϕ))
+
+    # Decay model
+    decay_model(x, p) = @. p[1] + p[2] * x
+
+    # Initial guess for the decay law
+    p0 = [2.0, 1.0]
+
+    model_B_r = curve_fit(decay_model, t[1:end-1], decay_B_r_log, p0)
+    model_B_ϕ = curve_fit(decay_model, t[1:end-1], decay_B_ϕ_log, p0)
+
+    println("B_r decay law: ", model_B_r.param)
+    println("B_ϕ decay law: ", model_B_ϕ.param)
+
+    # Plot the decay law and the data points
+    scatter(t[1:end-1], decay_B_r_log, label="\$B_r\$", title="Decay Law for \$B_r\$")
+    plot!(t[1:end-1], decay_model(t[1:end-1], model_B_r.param), label="Fit")
+    savefig("decay fit B_r.png")
+
+    scatter(t[1:end-1], decay_B_ϕ_log, label="\$B_\\phi\$", title="Decay Law for \$B_\\phi\$")
+    plot!(t[1:end-1], decay_model(t[1:end-1], model_B_ϕ.param), label="Fit")
+    savefig("decay fit B_ϕ.png")
+
+    return evolution_B_r, evolution_B_ϕ, decay_B_r, decay_B_ϕ
 
 end
 
 
-function evolve_pitch_angle(evolution_B_r, evolution_B_ϕ)
-    @showprogress for i in eachindex(evolution_B_r[1, :])
+function evolve_pitch_angle(r, evolution_B_r, evolution_B_ϕ)
+    anim = @animate for i in 1:size(evolution_B_r)[2]
         B_r = evolution_B_r[:, i]
         B_ϕ = evolution_B_ϕ[:, i]
         pitch_angle = get_pitch_angle(B_r, B_ϕ)
-
-        # Animation
-        anim = @animate for i in 1:10:length(pitch_angle)
-            plot(pitch_angle[1:i], label="Pitch Angle", xlabel="Radial Position", ylabel="Pitch Angle")
-        end
-        # Save the animation
-        gif(anim, "pitch_angle.gif", fps=15)
+        plot(r, pitch_angle, title="Pitch Angle Evolution", xlabel="Radial Position", ylabel="Pitch Angle")
     end
+    gif(anim, "pitch_angle.gif", fps=30)
 end
 
 function solve_mean_field(
@@ -346,6 +391,8 @@ function solve_mean_field(
     (
         evolution_B_r,
         evolution_B_ϕ,
+        decay_B_r,
+        decay_B_ϕ,
     ) = GalacticDynamo.evolve_magnetic_field(B_r, B_ϕ, V_r, V_z, r, H, η, α, Ω, dr, dt)
 
     # Plot heatmaps for the time evolution of B_r and B_ϕ
@@ -365,7 +412,7 @@ function solve_mean_field(
 
     savefig("B_ϕ_dynamo.png")
 
-    return evolution_B_r, evolution_B_ϕ
+    return evolution_B_r, evolution_B_ϕ, decay_B_r, decay_B_ϕ
 end
 
 function evolve_magnetic_energy(evolution_B_r, evolution_B_ϕ)
@@ -373,8 +420,7 @@ function evolve_magnetic_energy(evolution_B_r, evolution_B_ϕ)
     for i in 1:size(evolution_B_r)[2]
         B_r = evolution_B_r[:, i]
         B_ϕ = evolution_B_ϕ[:, i]
-        magnetic_energy[i] = @. sqrt(sum(B_r^2 + B_ϕ^2))
-        println(magnetic_energy[i])
+        magnetic_energy[i] = sqrt(sum(B_r .^ 2 .+ B_ϕ .^ 2))
     end
     plot(magnetic_energy, xlabel="Time", ylabel="Magnetic Energy", title="Magnetic Energy Evolution")
     savefig("magnetic_energy.png")
@@ -384,54 +430,3 @@ end
 
 end
 
-(
-    evolution_B_r,
-    evolution_B_ϕ,
-) = GalacticDynamo.solve_diffusion()
-
-
-# GalacticDynamo.evolve_pitch_angle(evolution_B_r, evolution_B_ϕ)
-function fB_r(r)
-    return @. -(r - 5)^2 + 25
-end
-
-function fB_ϕ(r)
-    return @. (r - 5)^2 - 25
-end
-
-function fΩ(r)
-    return @. 10 / sqrt(1 + (r / 4)^2)
-end
-
-function fα(r)
-    return ones(size(r))
-end
-
-function fV_r(r)
-    return zeros(size(r))
-end
-
-function fV_z(r)
-    return zeros(size(r))
-end
-
-(
-    evolution_B_r,
-    evolution_B_ϕ,
-) = GalacticDynamo.solve_mean_field(
-    fB_r,
-    fB_ϕ,
-    fΩ,
-    fα,
-    fV_r,
-    fV_z,
-    10.0,
-    10.0,
-    0.1,
-    0.02,
-    0.2,
-    0.01,
-    0.01,
-)
-
-magnetic_energy = GalacticDynamo.evolve_magnetic_energy(evolution_B_r, evolution_B_ϕ)
