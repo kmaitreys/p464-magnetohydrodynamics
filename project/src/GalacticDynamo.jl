@@ -21,6 +21,8 @@ Plots.default(titlefont=("computer modern"), legendfont=("computer modern"),
 #     end
 #     return grad
 # end
+
+
 function gradient(arr, r)
     n = length(arr)
     grad = similar(arr)
@@ -425,6 +427,63 @@ function evolve_magnetic_energy(evolution_B_r, evolution_B_ϕ)
     plot(magnetic_energy, xlabel="Time", ylabel="Magnetic Energy", title="Magnetic Energy Evolution")
     savefig("magnetic_energy.png")
     return magnetic_energy
+end
+
+
+function magnetic_field_alt(B_r, B_ϕ, r, η, V_z, h, α, Ω, q, dt)
+    dB_r = gradient(B_r, r)
+    d2B_r = gradient(dB_r, r)
+
+    t1_r = -(V_z .* B_r ./ (2 .* h))
+    t2_r = -2 * α .* B_ϕ ./ (π * h)
+    t3_r = η .* (-π^2 .* B_r ./ (4 .* h .^ 2) .+ d2B_r .+ (1 ./ r) .* dB_r .- (B_r ./ r .^ 2))
+
+    dB_ϕ = gradient(B_ϕ, r)
+    d2B_ϕ = gradient(dB_ϕ, r)
+
+    t1_ϕ = -(V_z .* B_ϕ ./ (2 .* h))
+    t2_ϕ = -q .* Ω .* B_r
+    t3_ϕ = η .* (-π^2 .* B_ϕ ./ (4 .* h .^ 2) .+ d2B_ϕ .+ (1 ./ r) .* dB_ϕ .- (B_ϕ ./ r .^ 2))
+
+    k_r = dt .* (t1_r .+ t2_r .+ t3_r)
+    k_ϕ = dt .* (t1_ϕ .+ t2_ϕ .+ t3_ϕ)
+
+    return k_r, k_ϕ
+end
+
+function runge_kutta_with_ghost_zones(
+    B_r, B_ϕ, dt, r, η, V_z, h, α, Ω, q, n_proper_zones, n_ghost_zones
+)
+
+    k1_r, k1_ϕ = dt .* magnetic_field_alt(B_r, B_ϕ, r, η, V_z, h, α, Ω, q, dt)
+
+    k2_r, k2_ϕ = dt .* magnetic_field_alt(
+        B_r .+ 0.5 .* k1_r, B_ϕ .+ 0.5 .* k1_ϕ, r, η, V_z, h, α, Ω, q, dt
+    )
+    k3_r, k3_ϕ = dt .* magnetic_field_alt(
+        B_r .+ 0.5 .* k2_r, B_ϕ .+ 0.5 .* k2_ϕ, r, η, V_z, h, α, Ω, q, dt
+    )
+    k4_r, k4_ϕ = dt .* magnetic_field_alt(
+        B_r .+ k3_r, B_ϕ .+ k3_ϕ, r, η, V_z, h, α, Ω, q, dt
+    )
+    B_r .+= (k1_r .+ 2 .* k2_r .+ 2 .* k3_r .+ k4_r) ./ 6
+    B_ϕ .+= (k1_ϕ .+ 2 .* k2_ϕ .+ 2 .* k3_ϕ .+ k4_ϕ) ./ 6
+
+    for i in n_ghost_zones - 1
+        B_r[n_ghost_zones-i] = -1 * B_r[n_ghost_zones+i]
+        B_ϕ[n_ghost_zones-i] = -1 * B_ϕ[n_ghost_zones+i]
+
+        B_r[n_ghost_zones] = 0
+        B_ϕ[n_ghost_zones] = 0
+
+        B_r[n_proper_zones] = 0
+        B_ϕ[n_proper_zones] = 0
+
+        B_r[n_proper_zones+i] = -1 * B_r[n_proper_zones-i]
+        B_ϕ[n_proper_zones+i] = -1 * B_ϕ[n_proper_zones-i]
+    end
+
+    return B_r, B_ϕ
 end
 
 
